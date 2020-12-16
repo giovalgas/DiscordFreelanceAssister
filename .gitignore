@@ -105,6 +105,7 @@ fabric.properties
 .idea/codestream.xml
 
 # Important Stuff
-token.json
+!token.json
+!clients.json
 
 # End of https://www.toptal.com/developers/gitignore/api/intellij
