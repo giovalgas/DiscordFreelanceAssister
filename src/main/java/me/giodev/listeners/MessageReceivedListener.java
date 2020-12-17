@@ -2,8 +2,10 @@ package me.giodev.listeners;
 
 
 import me.giodev.FreelanceAssister;
+import me.giodev.misc.ClientObject;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
+import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.MessageChannel;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.User;
@@ -11,15 +13,21 @@ import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
 
 import java.awt.*;
+import java.io.FileNotFoundException;
 import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Date;
 
 public class MessageReceivedListener extends ListenerAdapter {
 
+    private ClientObject client;
+    private int addStage;
     String[] ids = {"216340083035340801"};
     String[] commands = {"ADD", "GET"};
     String prefix = "-";
@@ -30,6 +38,12 @@ public class MessageReceivedListener extends ListenerAdapter {
         String command = e.getMessage().getContentRaw().split(" ")[0];
         String[] args = e.getMessage().getContentRaw().split(" ");
         JDA jda = FreelanceAssister.getJDA();
+
+        if(addStage != 0 && !e.getAuthor().isBot()){
+            advanceStage(args, addStage, e.getChannel());
+            return;
+        }
+
         if (
             e.getAuthor().isBot() ||
             !(isAuthorised(e.getAuthor())) ||
@@ -38,45 +52,56 @@ public class MessageReceivedListener extends ListenerAdapter {
             e.isFromGuild()
         ) return;
 
+        try {
+            JSONParser parser = new JSONParser();
+            Object o = parser.parse(new FileReader(System.getProperty("user.home") + "/documents/self-bot/clients.json"));
+            JSONObject object = (JSONObject) o;
+
         switch (command.replace(prefix, "").toUpperCase()) {
             case "ADD":
-                //TODO
+                if (args.length < 3) return;
+
+                client = new ClientObject(args[1], args[2]);
+                advanceStage(args, addStage, e.getChannel());
+
                 break;
             case "GET":
-                if(args.length < 2) return;
 
-                JSONParser parser = new JSONParser();
+                if (args.length < 2) return;
 
                 try {
-                    Object o = parser.parse(new FileReader(System.getProperty("user.home") + "/documents/self-bot/clients.json"));
-                    JSONObject object = (JSONObject) o;
+                    JSONObject commandObject = (JSONObject) object.get(args[1]);
+
+                    EmbedBuilder getEmbed = new EmbedBuilder();
+
+                    String description = String.valueOf(commandObject.get("PluginDescription"));
 
                     try {
-                        JSONObject commandObject = (JSONObject) object.get(args[1]);
-                        EmbedBuilder eb = new EmbedBuilder();
 
                         DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy/MM/dd");
                         LocalDateTime now = LocalDateTime.now();
 
-                        eb.setTitle(args[1], String.valueOf(commandObject.get("MCMPostLink")));
-                        eb.addField(new MessageEmbed.Field("Title", String.valueOf(commandObject.get("Title")), false));
-                        eb.addField(new MessageEmbed.Field("Description", String.valueOf(commandObject.get("PluginDescription")), false));
-                        eb.addField(new MessageEmbed.Field("Budget", String.valueOf(commandObject.get("Budget")), false));
-                        eb.setFooter("@Freelance Assister - " + dtf.format(now), jda.getSelfUser().getAvatarUrl());
-                        eb.setColor(Color.CYAN);
+                        getEmbed.setTitle(args[1], String.valueOf(commandObject.get("MCMPostLink")));
+                        getEmbed.addField(new MessageEmbed.Field("Title", String.valueOf(commandObject.get("Title")), false));
+                        getEmbed.addField(new MessageEmbed.Field("Description", description, false));
+                        getEmbed.addField(new MessageEmbed.Field("Budget", String.valueOf(commandObject.get("Budget")), false));
+                        getEmbed.setFooter("@Freelance Assister - " + dtf.format(now), jda.getSelfUser().getAvatarUrl());
+                        getEmbed.setColor(Color.CYAN);
 
-                        e.getChannel().sendMessage(eb.build()).queue();
+                        e.getChannel().sendMessage(getEmbed.build()).queue();
 
-                    }catch (NullPointerException np){
-                        System.out.println("aaaa");
-                        sendError("Did not find a client with the ID: " + args[1], e.getChannel());
+                    } catch (IllegalArgumentException ie) {
+                        sendError("The description cannot be longer than 1024 characters (" + description.length() + " chars)", e.getChannel());
                     }
 
-                }catch (Exception ex){
-                    ex.printStackTrace();
+                } catch (NullPointerException np) {
+                    System.out.println("aaaa");
+                    sendError("Did not find a client with the ID: " + args[1], e.getChannel());
                 }
-
                 break;
+            }
+        }catch (ParseException | IOException ex){
+            ex.printStackTrace();
         }
     }
 
@@ -115,4 +140,84 @@ public class MessageReceivedListener extends ListenerAdapter {
 
     }
 
+    private void advanceStage(String args[], int stage, MessageChannel mc){
+
+        String fullMessage = "";
+
+        for(String s : args){
+            fullMessage += s + " ";
+        }
+
+        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy/MM/dd");
+        LocalDateTime now = LocalDateTime.now();
+
+        JDA jda = FreelanceAssister.getJDA();
+        EmbedBuilder addEmbed = new EmbedBuilder();
+
+        addEmbed.setColor(Color.CYAN);
+        addEmbed.setFooter("@Freelance Assister - " + dtf.format(now), jda.getSelfUser().getAvatarUrl());
+
+        addEmbed.setTitle(client.getDiscordID(), client.getUrl());
+
+        try {
+            switch (stage) {
+                case 0:
+                    addEmbed.addField(new MessageEmbed.Field("Title", "Please type in the title", false));
+                    addStage++;
+                    break;
+                case 1:
+                    addEmbed.clearFields();
+                    addEmbed.addField(new MessageEmbed.Field("Title", fullMessage, false));
+                    addEmbed.addField(new MessageEmbed.Field("Description", "Please type in the description", false));
+
+                    client.setTitle(fullMessage);
+                    addStage++;
+                    break;
+                case 2:
+                    addEmbed.clearFields();
+                    addEmbed.addField(new MessageEmbed.Field("Title", client.getTitle(), false));
+                    addEmbed.addField(new MessageEmbed.Field("Description", fullMessage, false));
+                    addEmbed.addField(new MessageEmbed.Field("Budget", "Please type in the budget", false));
+                    client.setDescription(fullMessage);
+                    addStage++;
+                    break;
+                case 3:
+                    addEmbed.clearFields();
+                    addEmbed.addField(new MessageEmbed.Field("Title", client.getTitle(), false));
+                    addEmbed.addField(new MessageEmbed.Field("Description", client.getDescription(), false));
+                    addEmbed.addField(new MessageEmbed.Field("Budget", fullMessage, false));
+
+                    client.setBudget(fullMessage);
+
+                    JSONObject newClientInfo = new JSONObject();
+
+                    newClientInfo.put("MCMPostLink", client.getUrl());
+                    newClientInfo.put("Title", client.getTitle());
+                    newClientInfo.put("PluginDescription", client.getDescription());
+                    newClientInfo.put("Budget", client.getBudget());
+
+                    try{
+                        JSONParser parser = new JSONParser();
+                        Object o = parser.parse(new FileReader(System.getProperty("user.home") + "/documents/self-bot/clients.json"));
+                        JSONObject object = (JSONObject) o;
+
+                        object.put(client.getDiscordID(), newClientInfo);
+
+                        FileWriter fw = new FileWriter(System.getProperty("user.home") + "/documents/self-bot/clients.json", false);
+                        fw.write(object.toJSONString());
+                        fw.flush();
+
+                    } catch (IOException | ParseException e) {
+                        e.printStackTrace();
+                    }
+
+                    addStage = 0;
+                    break;
+            }
+            mc.sendMessage(addEmbed.build()).queue();
+        }catch (IllegalArgumentException ie){
+            sendError("The text cannot be longer than 1024 characters (" + fullMessage.length() + " chars), please try again", mc);
+            addStage = 0;
+        }
+    }
 }
