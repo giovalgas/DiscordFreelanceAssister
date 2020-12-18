@@ -95,7 +95,6 @@ public class MessageReceivedListener extends ListenerAdapter {
                     }
 
                 } catch (NullPointerException np) {
-                    System.out.println("aaaa");
                     sendError("Did not find a client with the ID: " + args[1], e.getChannel());
                 }
                 break;
@@ -211,13 +210,34 @@ public class MessageReceivedListener extends ListenerAdapter {
                         e.printStackTrace();
                     }
 
+                    EmbedBuilder eb = new EmbedBuilder();
+
                     addStage = 0;
                     break;
             }
             mc.sendMessage(addEmbed.build()).queue();
-        }catch (IllegalArgumentException ie){
+            sendSuccess("Successfully added " + client.getDiscordID() +  " to the database", mc);
+
+        }catch (IllegalArgumentException ie) {
             sendError("The text cannot be longer than 1024 characters (" + fullMessage.length() + " chars), please try again", mc);
             addStage = 0;
         }
+    }
+
+    private void sendSuccess(String message, MessageChannel channel) {
+
+        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy/MM/dd");
+        LocalDateTime now = LocalDateTime.now();
+
+        JDA jda = FreelanceAssister.getJDA();
+
+        EmbedBuilder eb = new EmbedBuilder();
+        eb.setColor(Color.GREEN);
+        eb.setTitle("SUCCESS");
+        eb.setDescription(message);
+        eb.setFooter("@Freelance Assister - " + dtf.format(now), jda.getSelfUser().getAvatarUrl());
+
+        channel.sendMessage(eb.build()).queue();
+
     }
 }
